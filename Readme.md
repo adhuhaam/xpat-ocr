@@ -81,6 +81,13 @@ npm test
 
 ### 1. Docker Compose (recommended)
 
+**Why this is the easiest path:** Docker Compose spins up the whole stack (backend, database, and frontend) in isolated containers with a single command. That means:
+- No need to install Node, MongoDB, or any build tools on the host
+- The environment is identical in development, staging, and production ("works on my machine" problems disappear)
+- All services share a private Docker network and sensible defaults (ports 5000/3000) but can be remapped easily
+- Data is persisted in a named volume (`mongo-data`) and can be backed-up or removed without touching host files
+- One-liner cleanup: `docker compose down -v` stops everything and erases volumes if desired
+
 A sample `docker-compose.yml` is included below.  
 Copy it to the project root and run `docker compose up -d`.
 
