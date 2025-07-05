@@ -135,6 +135,120 @@ Frontend:
    pm2 start server.js --name passport-api
    ```
 
+### 4. Self-Hosted Ubuntu Server (bare-metal or VM)
+
+The following steps were verified on **Ubuntu 22.04 LTS** but work on most modern releases.
+
+1. **Update & install required packages**
+   ```bash
+   sudo apt update && sudo apt upgrade -y
+   # build essentials & git
+   sudo apt install -y build-essential git curl
+
+   # Node (use NodeSource) – replace 18.x with latest LTS if needed
+   curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+   sudo apt install -y nodejs
+
+   # PM2 process manager (global)
+   sudo npm i -g pm2
+
+   # MongoDB Community Edition
+   curl -fsSL https://pgp.mongodb.com/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+   echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+   sudo apt update && sudo apt install -y mongodb-org
+   sudo systemctl enable --now mongod
+   ```
+
+2. **Clone the repository**
+   ```bash
+   cd /var/www
+   sudo git clone <repository-url> passport-ocr-app
+   sudo chown -R $USER:$USER passport-ocr-app
+   ```
+
+3. **Configure backend environment**
+   ```bash
+   cd passport-ocr-app/passport-ocr-app/backend
+   cp .env.example .env
+   nano .env   # update MONGODB_URI if using Atlas / auth
+   ```
+
+4. **Install dependencies & build**
+   ```bash
+   npm ci --production     # backend deps only
+   # (optional) build TypeScript / transpile if you added Babel etc.
+
+   # build frontend on the server
+   cd ../frontend
+   npm ci && npm run build
+   ```
+
+   The production-ready static files will be located in `passport-ocr-app/passport-ocr-app/frontend/build`.
+
+5. **Serve API with PM2**
+   ```bash
+   cd ../backend
+   pm2 start server.js --name passport-api
+   pm2 save               # auto-restart on reboot
+   ```
+
+6. **Configure Nginx as a reverse proxy**
+   ```bash
+   sudo apt install -y nginx
+   sudo nano /etc/nginx/sites-available/passport-ocr
+   ```
+   Paste configuration:
+   ```nginx
+   server {
+     listen 80;
+     server_name _;  # or your.local.ip / domain
+
+     # Frontend
+     root /var/www/passport-ocr-app/passport-ocr-app/frontend/build;
+     index index.html;
+
+     location /api/ {
+       proxy_pass http://127.0.0.1:5000/;
+       proxy_http_version 1.1;
+       proxy_set_header Upgrade $http_upgrade;
+       proxy_set_header Connection 'upgrade';
+       proxy_set_header Host $host;
+       proxy_cache_bypass $http_upgrade;
+     }
+
+     # React Router – fallback to index.html
+     location / {
+       try_files $uri /index.html;
+     }
+   }
+   ```
+   Enable & reload:
+   ```bash
+   sudo ln -s /etc/nginx/sites-available/passport-ocr /etc/nginx/sites-enabled/
+   sudo nginx -t
+   sudo systemctl reload nginx
+   ```
+
+7. **Firewall (optional but recommended)**
+   ```bash
+   sudo ufw allow OpenSSH
+   sudo ufw allow 80/tcp
+   sudo ufw allow 443/tcp
+   sudo ufw enable
+   ```
+
+8. **HTTPS (optional)** – If you own a domain pointed to the server, secure it with Let's Encrypt:
+   ```bash
+   sudo snap install core; sudo snap refresh core
+   sudo snap install --classic certbot
+   sudo ln -s /snap/bin/certbot /usr/bin/certbot
+   sudo certbot --nginx -d example.com -d www.example.com
+   ```
+
+Your React app should now load from `http://<server-ip>` (or `https://example.com`) and the API will be accessible under `/api/*`.
+
+> **Tip:** Monitor the Node service with `pm2 monit` and logs via `pm2 logs passport-api`.
+
 ## Environment Variables
 
 | Key | Default | Description |
